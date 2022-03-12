@@ -13,6 +13,7 @@ using CppSharp.Parser;
 using CppSharp.Passes;
 using CppSharp.Utils;
 using CppSharp.Types;
+using CppSharp.Generators.Java;
 
 namespace CppSharp
 {
@@ -49,6 +50,8 @@ namespace CppSharp
                     return new NAPIGenerator(Context);
                 case GeneratorKind.TypeScript:
                     return new TSGenerator(Context);
+                case GeneratorKind.Java:
+                    return new JavaGenerator(Context);
             }
 
             throw new NotImplementedException();

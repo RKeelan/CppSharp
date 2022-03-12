@@ -7,6 +7,7 @@ using CppSharp.Generators;
 using CppSharp.Generators.C;
 using CppSharp.Generators.CLI;
 using CppSharp.Generators.CSharp;
+using CppSharp.Generators.Java;
 using CppSharp.Types;
 
 namespace CppSharp.Passes
@@ -215,6 +216,9 @@ namespace CppSharp.Passes
                     break;
                 case GeneratorKind.CSharp:
                     typePrinter = new CSharpTypePrinter(Context);
+                    break;
+                case GeneratorKind.Java:
+                    typePrinter = new JavaTypePrinter(Context);
                     break;
                 default:
                     throw new System.NotImplementedException();
