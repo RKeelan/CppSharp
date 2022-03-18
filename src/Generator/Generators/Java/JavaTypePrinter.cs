@@ -10,6 +10,7 @@ namespace CppSharp.Generators.Java
 {
     public  class JavaTypePrinter : TypePrinter
     {
+        public string IntPtrType => "long ";
 
         public JavaTypePrinter()
         {
@@ -37,7 +38,8 @@ namespace CppSharp.Generators.Java
 
         public override TypePrinterResult VisitDeclaration(Declaration decl)
         {
-            throw new NotImplementedException();
+            // RK 18-Mar-2022: Start with the simplest possible thing
+            return decl.Name;
         }
 
         public override TypePrinterResult VisitDelegate(FunctionType function)
@@ -137,12 +139,33 @@ namespace CppSharp.Generators.Java
         public override TypePrinterResult VisitPointerType(PointerType pointer,
             TypeQualifiers quals)
         {
-            throw new NotImplementedException();
+            if (MarshalKind == MarshalKind.NativeField && !pointer.Pointee.IsEnumType())
+                return IntPtrType;
+
+            if (pointer.Pointee is FunctionType)
+                return pointer.Pointee.Visit(this, quals);
+
+            var isManagedContext = ContextKind == TypePrinterContextKind.Managed;
+
+            var pointee = pointer.Pointee.Desugar();
+
+            if (isManagedContext &&
+                new QualifiedType(pointer, quals).IsConstRefToPrimitive())
+                return pointee.Visit(this);
+
+            if ((pointee.IsDependent || pointee.IsClass())
+                && ContextKind == TypePrinterContextKind.Native)
+            {
+                return IntPtrType;
+            }
+
+            return pointer.QualifiedPointee.Visit(this);
         }
 
-        public TypePrinterResult VisitPrimitiveType(PrimitiveType primitive)
+        public override TypePrinterResult VisitPrimitiveType(PrimitiveType type,
+            TypeQualifiers quals)
         {
-            switch (primitive)
+            switch (type)
             {
                 case PrimitiveType.Null:
                     return "null";
@@ -164,7 +187,7 @@ namespace CppSharp.Generators.Java
                 case PrimitiveType.ULong:
                 case PrimitiveType.LongLong:
                 case PrimitiveType.ULongLong:
-                    return GetIntString(primitive, Context.TargetInfo);
+                    return GetIntString(type, Context.TargetInfo);
                 //case PrimitiveType.Int128:
                 //case PrimitiveType.UInt128:
                 // TODO RK 14-Mar-2022: Can I use BigInteger for these?
@@ -181,12 +204,6 @@ namespace CppSharp.Generators.Java
                     //    return "string";
             }
 
-            throw new NotSupportedException($"I haven't decided how to support {primitive} yet.");
-        }
-
-        public override TypePrinterResult VisitPrimitiveType(PrimitiveType type,
-            TypeQualifiers quals)
-        {
             throw new NotImplementedException();
         }
 
@@ -249,14 +266,13 @@ namespace CppSharp.Generators.Java
         public override TypePrinterResult VisitTypedefType(TypedefType typedef, TypeQualifiers quals)
         {
             if (typedef.Declaration.QualifiedOriginalName == "std::nullptr_t")
-                return VisitPrimitiveType(PrimitiveType.Null);
+                return VisitPrimitiveType(PrimitiveType.Null, quals);
 
             if (typedef.Declaration.Type.IsPrimitiveType())
                 return typedef.Declaration.Type.Visit(this);
 
             return base.VisitTypedefType(typedef, quals);
         }
-
 
         public override TypePrinterResult VisitUnaryTransformType(
             UnaryTransformType unaryTransformType, TypeQualifiers quals)
@@ -277,11 +293,6 @@ namespace CppSharp.Generators.Java
 
         public override TypePrinterResult VisitVarTemplateSpecializationDecl(
             VarTemplateSpecialization template)
-        {
-            throw new NotImplementedException();
-        }
-
-        public TypePrinterResult VisitUnresolvedUsingDecl(UnresolvedUsingTypename unresolvedUsingTypename)
         {
             throw new NotImplementedException();
         }
