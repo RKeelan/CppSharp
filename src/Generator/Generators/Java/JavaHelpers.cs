@@ -7,10 +7,14 @@ namespace CppSharp.Generators.Java
 {
     public static class JavaHelpers
     {
-        public static readonly string NativeInstanceAddrIdentifier = "nativeInstanceAddr";
-        public static readonly string OwnsNativeInstanceIdentifier = "ownsNativeInstance";
-        public static readonly string CreateInstanceIdentifier ="jniCreateInstance";
-        public static readonly string DestroyInstanceIdentifier = "jniDestroyInstance";
+        public const string NativeInstanceIdentifier = "nativeInstance";
+        public const string NativeInstanceAddrIdentifier = "nativeInstanceAddr";
+        public const string OwnsNativeInstanceIdentifier = "ownsNativeInstance";
+        public const string CreateInstanceIdentifier ="jniCreateInstance";
+        public const string DestroyInstanceIdentifier = "jniDestroyInstance";
+        public const string SetNativeInstanceIdentifier = "setNativeInstance";
+        public const string GetNativeInstanceIdentifier = "getNativeInstance";
+        public const string SetOwnsNativeInstanceIdentifier = "setOwnsNativeInstance";
 
         public static string GetAccess(AccessSpecifier accessSpecifier)
         {

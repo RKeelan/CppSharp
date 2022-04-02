@@ -1,6 +1,7 @@
 ﻿using CppSharp.AST;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 
 namespace CppSharp.Generators.Java
@@ -18,8 +19,11 @@ namespace CppSharp.Generators.Java
         {
             var outputs = new List<CodeGenerator>();
 
-            var gen = new JavaSources(Context, units) { TypePrinter = typePrinter };
-            outputs.Add(gen);
+            var javaSoure = new JavaSources(Context, units) { TypePrinter = typePrinter };
+            outputs.Add(javaSoure);
+
+            var jniSource = new JniSources(Context, units);
+            outputs.Add(jniSource);
 
             return outputs;
         }
