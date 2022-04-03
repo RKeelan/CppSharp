@@ -8,7 +8,7 @@ using System.Text;
 
 namespace CppSharp.Generators.Java
 {
-    public  class JavaTypePrinter : TypePrinter
+    public class JavaTypePrinter : TypePrinter
     {
         public string IntPtrType => "long ";
 
@@ -312,8 +312,8 @@ namespace CppSharp.Generators.Java
         {
             GetPrimitiveTypeWidth(primitive, targetInfo, out uint width, out  bool signed);
 
-            if (signed)
-                throw new NotImplementedException($"I haven't decided how to support signed types yet");
+            if (!signed)
+                throw new NotImplementedException(primitive.ToString());
 
             switch (width)
             {

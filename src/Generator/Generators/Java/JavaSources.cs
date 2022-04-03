@@ -1,9 +1,7 @@
 ﻿using CppSharp.AST;
-using CppSharp.Generators;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 
 namespace CppSharp.Generators.Java
 {
@@ -82,6 +80,7 @@ namespace CppSharp.Generators.Java
             VisitDeclContext(@class);
 
             GenerateClassConstructors(@class);
+            GenerateClassMethods(@class);
 
             UnindentAndWriteCloseBrace();
             PopBlock(NewLineKind.BeforeNextBlock);
@@ -100,10 +99,6 @@ namespace CppSharp.Generators.Java
             WriteLine($"private boolean {JavaHelpers.OwnsNativeInstanceIdentifier};");
             PopBlock(NewLineKind.BeforeNextBlock);
 
-            PushBlock(BlockKind.Field);
-            WriteLine($"private native void {JavaHelpers.CreateInstanceIdentifier}();");
-            PopBlock(NewLineKind.BeforeNextBlock);
-
             foreach (var ctor in @class.Constructors.Where(c => !c.IsImplicit))
             {
                 if (ASTUtils.CheckIgnoreMethod(ctor))
@@ -117,7 +112,7 @@ namespace CppSharp.Generators.Java
         private void GenerateCloseMethod()
         {
             PushBlock(BlockKind.Field);
-            WriteLine($"private native void {JavaHelpers.DestroyInstanceIdentifier}();");
+            WriteLine($"private native void {JavaHelpers.DestroyInstanceJniIdentifier}();");
             PopBlock(NewLineKind.BeforeNextBlock);
 
             PushBlock(BlockKind.Method);
@@ -136,28 +131,66 @@ namespace CppSharp.Generators.Java
             UnindentAndWriteCloseBrace();
             NewLine();
 
-            WriteLine($"{JavaHelpers.DestroyInstanceIdentifier}();");
+            WriteLine($"{JavaHelpers.DestroyInstanceJniIdentifier}();");
             UnindentAndWriteCloseBrace();
             PopBlock(NewLineKind.BeforeNextBlock);
         }
         #endregion
 
         #region Methods / Functions
+        public void GenerateClassMethods(Class @class)
+        {
+            foreach (var method in @class.Methods)
+            {
+                if (ASTUtils.CheckIgnoreMethod(method))
+                    continue;
+
+                if (method.IsConstructor)
+                    continue;
+
+                // Do not generate property getter/setter methods as they will be generated
+                // as part of properties generation.
+                var field = (method?.AssociatedDeclaration as Property)?.Field;
+                if (field != null)
+                    continue;
+
+                GenerateMethod(method, @class);
+            }
+        }
+
         public void GenerateMethod(Method method, Class @class)
         {
             PushBlock(BlockKind.Method, method);
             GenerateDeclarationCommon(method);
 
+            GenerateJniMethoodSpecifier(method, out string jniMethod);
             Write(JavaHelpers.GetAccess(method.Access));
             GenerateMethodSpecifier(method);
             NewLine();
             WriteOpenBraceAndIndent();
 
-            if (method.Kind == CXXMethodKind.Constructor)
-                WriteLine($"{JavaHelpers.CreateInstanceIdentifier}();");
+            if (JavaHelpers.IsVoid(method))
+                Write($"{jniMethod}");
+            else
+                Write($"return {jniMethod}");
+
+            WriteLine($"({GetCallSiteParameters(method)});");
 
             UnindentAndWriteCloseBrace();
             PopBlock(NewLineKind.BeforeNextBlock);
+        }
+
+        public void GenerateJniMethoodSpecifier(Method method, out string jniMethod)
+        {
+            string printedType = method.OriginalReturnType.Visit(TypePrinter);
+            string functionName = method.IsConstructor ?
+                JavaHelpers.CreateInstanceIdentifier :
+                GetMethodIdentifier(method);
+            jniMethod = $"{functionName}Jni";
+
+            Write($"private native {printedType} {jniMethod}(");
+            Write(FormatMethodParameters(method.Parameters));
+            WriteLine(");");
         }
 
         public override void GenerateMethodSpecifier(Method method, MethodSpecifierKind? kind = null)
@@ -190,7 +223,7 @@ namespace CppSharp.Generators.Java
 
         public static string GetMethodIdentifier(Method method)
         {
-            if (method.IsConstructor || method.IsDestructor)
+            if (method.IsConstructor)
                 return method.Namespace.Name;
 
             return GetFunctionIdentifier(method);
@@ -207,6 +240,11 @@ namespace CppSharp.Generators.Java
         private string FormatMethodParameters(IEnumerable<Parameter> @params)
         {
             return TypePrinter.VisitParameters(@params, true).Type;
+        }
+
+        private string GetCallSiteParameters(Function function)
+        {
+            return string.Join(", ", function.Parameters.Select(p => p.Name));
         }
         #endregion
 

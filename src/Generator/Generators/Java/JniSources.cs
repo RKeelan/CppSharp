@@ -1,10 +1,8 @@
 ﻿using CppSharp.AST;
 using CppSharp.Generators.C;
-using CppSharp.Generators.Cpp;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 
 namespace CppSharp.Generators.Java
 {
@@ -19,6 +17,7 @@ namespace CppSharp.Generators.Java
         public JniSources(BindingContext context, IEnumerable<TranslationUnit> units)
             : base(context, units)
         {
+            typePrinter = new JniTypePrinter(context);
         }
 
         public override string FileExtension { get { return "cpp"; } }
@@ -47,6 +46,7 @@ namespace CppSharp.Generators.Java
 
             VisitDeclContext(@class);
             GenerateClassConstructors(@class);
+            GenerateClassMethods(@class);
 
             return true;
         }
@@ -71,14 +71,12 @@ namespace CppSharp.Generators.Java
         {
             PushBlock(BlockKind.Method);
             WriteLine(JNI_EXPORT);
-            WriteLine($"void {JNI_CALL} {GetJniFunctionPrefix(@class)}{JavaHelpers.DestroyInstanceIdentifier}" +
+            WriteLine($"void {JNI_CALL} {GetJniFunctionPrefix(@class)}{JavaHelpers.DestroyInstanceJniIdentifier}" +
                 $"({JNI_COMMON_PARAMETERS_DECL})");
 
             WriteOpenBraceAndIndent();
 
-            Write($"{@class.Name}* {JavaHelpers.NativeInstanceIdentifier} = ");
-            Write($"{CPP_SHARP_JNI_RUNTIME_NAMESPACE}{JavaHelpers.GetNativeInstanceIdentifier}");
-            WriteLine($"<{@class.Name}>({JNI_COMMON_PARAMETERS});");
+            GenerateGetNativeInstance(@class);
 
             Write($"if ({JavaHelpers.NativeInstanceIdentifier} != nullptr) ");
             WriteOpenBraceAndIndent();
@@ -98,6 +96,26 @@ namespace CppSharp.Generators.Java
         #endregion
 
         #region Methods / Functions
+        public void GenerateClassMethods(Class @class)
+        {
+            foreach (var method in @class.Methods)
+            {
+                if (ASTUtils.CheckIgnoreMethod(method))
+                    continue;
+
+                if (method.IsConstructor)
+                    continue;
+
+                // Do not generate property getter/setter methods as they will be generated
+                // as part of properties generation.
+                var field = (method?.AssociatedDeclaration as Property)?.Field;
+                if (field != null)
+                    continue;
+
+                GenerateMethod(method, @class);
+            }
+        }
+
         public void GenerateMethod(Method method, Class @class)
         {
             PushBlock(BlockKind.Method, method);
@@ -110,8 +128,8 @@ namespace CppSharp.Generators.Java
 
             if (method.Kind == CXXMethodKind.Constructor)
             {
-                // TODO RK 02-Apr-2022: Handle constructor arguments
-                WriteLine($"{@class.Name}* {JavaHelpers.NativeInstanceIdentifier} = new {@class.Name}();");
+                Write($"{@class.Name}* {JavaHelpers.NativeInstanceIdentifier} = ");
+                WriteLine($"new {@class.Name}({GetCallSiteParameters(method)});");
 
                 Write($"{CPP_SHARP_JNI_RUNTIME_NAMESPACE}{JavaHelpers.SetNativeInstanceIdentifier}");
                 WriteLine($"({JNI_COMMON_PARAMETERS}, {JavaHelpers.NativeInstanceIdentifier});");
@@ -121,18 +139,34 @@ namespace CppSharp.Generators.Java
             }
             else
             {
-                // TODO RK 02-Apr-2022: Handle normal methods
+                GenerateGetNativeInstance(@class);
+                if (JavaHelpers.IsVoid(method))
+                    WriteLine($"{JavaHelpers.NativeInstanceIdentifier}->{method.OriginalName}({GetCallSiteParameters(method)});");
+                else
+                    WriteLine($"return {JavaHelpers.NativeInstanceIdentifier}->{method.OriginalName}({GetCallSiteParameters(method)});");
             }
 
             UnindentAndWriteCloseBrace();
             PopBlock(NewLineKind.BeforeNextBlock);
         }
 
+        private void GenerateGetNativeInstance(Class @class)
+        {
+            Write($"{@class.Name}* {JavaHelpers.NativeInstanceIdentifier} = ");
+            Write($"{CPP_SHARP_JNI_RUNTIME_NAMESPACE}{JavaHelpers.GetNativeInstanceIdentifier}");
+            WriteLine($"<{@class.Name}>({JNI_COMMON_PARAMETERS});");
+        }
+
+        public override string GetMethodIdentifier(Function function, TypePrinterContextKind context = TypePrinterContextKind.Managed)
+        {
+            return base.GetMethodIdentifier(function, context) + "Jni";
+        }
+
         public override void GenerateMethodSpecifier(Method method, MethodSpecifierKind? kind = null)
         {
             Class @class = method.Namespace as Class;
             var methodId = method.IsConstructor ?
-                GetJniFunctionPrefix(@class) + JavaHelpers.CreateInstanceIdentifier :
+                GetJniFunctionPrefix(@class) + JavaHelpers.CreateInstanceJniIdentifier :
                 GetJniFunctionPrefix(@class) + GetMethodIdentifier(method);
             var returnType = method.ReturnType.Visit(CTypePrinter);
             Write($"{returnType} {JNI_CALL} {methodId}(");
@@ -164,7 +198,12 @@ namespace CppSharp.Generators.Java
             if (function.IsOperator)
                 throw new NotImplementedException("Operator overload");
 
-            return jniPrefix + function.Name;
+            return jniPrefix + function.Name + "Jni";
+        }
+
+        private string GetCallSiteParameters(Function function)
+        {
+            return string.Join(", ", function.Parameters.Select(p => p.Name));
         }
         #endregion
 
