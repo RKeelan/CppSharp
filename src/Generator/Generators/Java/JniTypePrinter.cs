@@ -14,6 +14,10 @@ namespace CppSharp.Generators.Java
 
         public override TypePrinterResult VisitPrimitiveType(PrimitiveType primitive)
         {
+            // TODO RK 03-Apr-2022: This doesn't get called sort-of built in types like "uint8_t". I
+            // know that CSharpGenerator translates (e.g.,) uint8_t into byte, but I'm not sure how. I
+            // thought that it might be a Pass, but I looked at all the default passes that are set up
+            // CSharp, and I didn't see one that seemed to fit
             switch (primitive)
             {
                 case PrimitiveType.Bool: return "jboolean";
@@ -62,10 +66,8 @@ namespace CppSharp.Generators.Java
 
         static string GetIntString(PrimitiveType primitive, ParserTargetInfo targetInfo)
         {
-            uint width = primitive.GetInfo(targetInfo, out bool signed).Width;
-
-            if (!signed)
-                throw new NotImplementedException();
+            // See JavaTypePrinter.GetIntString() for an explanation of why signedness is being ignored
+            uint width = primitive.GetInfo(targetInfo, out _).Width;
 
             switch (width)
             {

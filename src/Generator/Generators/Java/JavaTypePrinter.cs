@@ -303,17 +303,20 @@ namespace CppSharp.Generators.Java
             throw new NotImplementedException();
         }
 
-        public static void GetPrimitiveTypeWidth(PrimitiveType primitive, ParserTargetInfo targetInfo, out uint width, out bool signed)
-        {
-            width = primitive.GetInfo(targetInfo, out signed).Width;
-        }
-
         static string GetIntString(PrimitiveType primitive, ParserTargetInfo targetInfo)
         {
-            GetPrimitiveTypeWidth(primitive, targetInfo, out uint width, out  bool signed);
-
-            if (!signed)
-                throw new NotImplementedException(primitive.ToString());
+            // There are three possible approaches to handling unsigned types:
+            //  1. Ignore it, and let the consuming Java code handle it
+            //  2. Widen the type (e.g., replace byte with short) so that the Java code can represent the
+            // full range of potential values in a signed type
+            //  3. Box the value in a custom class (e.g., SignedByte)
+            //
+            // All three approachs have advantages and disadvantages, but given that the Java language
+            // designers seem to have elected for option 1:
+            //  https://docs.oracle.com/javase/8/docs/api/java/lang/Integer.html#compareUnsigned-int-int-
+            // I think it makes the best default.
+            // It would be a good idea to add passes or driver options to support options 2 and 3, though.
+            uint width = primitive.GetInfo(targetInfo, out _).Width;
 
             switch (width)
             {
