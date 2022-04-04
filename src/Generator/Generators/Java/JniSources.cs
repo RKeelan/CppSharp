@@ -1,5 +1,6 @@
 ﻿using CppSharp.AST;
 using CppSharp.Generators.C;
+using CppSharp.Passes;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -38,7 +39,12 @@ namespace CppSharp.Generators.Java
             PushBlock(BlockKind.Footer);
             PopBlock();
         }
-        
+
+        public virtual void GenerateMain()
+        {
+            VisitNamespace(TranslationUnit);
+        }
+
         public override bool VisitClassDecl(Class @class)
         {
             if (!@class.IsGenerated || @class.IsIncomplete)
@@ -47,6 +53,7 @@ namespace CppSharp.Generators.Java
             VisitDeclContext(@class);
             GenerateClassConstructors(@class);
             GenerateClassMethods(@class);
+            GenerateClassProperties(@class, @class);
 
             return true;
         }
@@ -207,10 +214,68 @@ namespace CppSharp.Generators.Java
         }
         #endregion
 
-        public virtual void GenerateMain()
+        #region Properties
+        private void GenerateClassProperties(Class @class, Class realOwner)
         {
-            VisitNamespace(TranslationUnit);
+            // Handle the case of struct (value-type) inheritance by adding the base
+            // properties to the managed value subtypes.
+            if (@class.IsValueType)
+            {
+                foreach (var @base in @class.Bases.Where(b => b.IsClass && b.Class.IsDeclared))
+                {
+                    GenerateClassProperties(@base.Class, realOwner);
+                }
+            }
+
+            foreach (var property in @class.Properties.Where(
+                p => !ASTUtils.CheckIgnoreProperty(p) && !p.IsInRefTypeAndBackedByValueClassField()))
+                GenerateProperty(property, realOwner);
         }
+
+        private void GenerateProperty(Property property, Class realOwner)
+        {
+            PushBlock(BlockKind.Property);
+
+            if (property.Field is null)
+            {
+                throw new NotImplementedException();
+            }
+
+            if (property.HasGetter)
+                GeneratePropertyAccessor(property.Field, realOwner, true);
+
+            if (property.HasSetter)
+                GeneratePropertyAccessor(property.Field, realOwner, false);
+
+            PopBlock(NewLineKind.BeforeNextBlock);
+        }
+
+        private void GeneratePropertyAccessor(Field field, Class @class, bool isGetter)
+        {
+            PushBlock(BlockKind.Property);
+            WriteLine(JNI_EXPORT);
+
+            string propertyType = field.Type.Visit(CTypePrinter);
+            string verb = isGetter ? "get" : "set";
+            string name = CaseRenamePass.ConvertCaseString(field, RenameCasePattern.UpperCamelCase);
+            string methodId = GetJniFunctionPrefix(@class) + verb + name + "Jni";
+            if (isGetter)
+                WriteLine($"{propertyType} {JNI_CALL} {methodId}({JNI_COMMON_PARAMETERS_DECL})");
+            else
+                WriteLine($"void {JNI_CALL} {methodId}({JNI_COMMON_PARAMETERS_DECL}, {propertyType} {JavaHelpers.AccessorParameterName})");
+
+            WriteOpenBraceAndIndent();
+
+            GenerateGetNativeInstance(@class);
+            if (isGetter)
+                WriteLine($"return {JavaHelpers.NativeInstanceIdentifier}->{field.OriginalName};");
+            else
+                WriteLine($"{JavaHelpers.NativeInstanceIdentifier}->{field.OriginalName} = {JavaHelpers.AccessorParameterName};");
+
+            UnindentAndWriteCloseBrace();
+            PopBlock(NewLineKind.BeforeNextBlock);
+        }
+        #endregion
 
         public override bool VisitProperty(Property property)
         {

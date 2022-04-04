@@ -18,6 +18,7 @@ namespace CppSharp.Generators.Java
         public const string SetNativeInstanceIdentifier = "setNativeInstance";
         public const string GetNativeInstanceIdentifier = "getNativeInstance";
         public const string SetOwnsNativeInstanceIdentifier = "setOwnsNativeInstance";
+        public const string AccessorParameterName = "value";
 
         public static string GetAccess(AccessSpecifier accessSpecifier)
         {

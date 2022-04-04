@@ -1,7 +1,9 @@
 ﻿using CppSharp.AST;
+using CppSharp.Passes;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Type = CppSharp.AST.Type;
 
 namespace CppSharp.Generators.Java
 {
@@ -81,6 +83,7 @@ namespace CppSharp.Generators.Java
 
             GenerateClassConstructors(@class);
             GenerateClassMethods(@class);
+            GenerateClassProperties(@class);
 
             UnindentAndWriteCloseBrace();
             PopBlock(NewLineKind.BeforeNextBlock);
@@ -245,6 +248,73 @@ namespace CppSharp.Generators.Java
         private string GetCallSiteParameters(Function function)
         {
             return string.Join(", ", function.Parameters.Select(p => p.Name));
+        }
+        #endregion
+
+        #region Properties
+        private void GenerateClassProperties(Class @class)
+        {
+            // Handle the case of struct (value-type) inheritance by adding the base
+            // properties to the managed value subtypes.
+            if (@class.IsValueType)
+            {
+                foreach (var @base in @class.Bases.Where(b => b.IsClass && b.Class.IsDeclared))
+                {
+                    GenerateClassProperties(@base.Class);
+                }
+            }
+
+            foreach (var property in @class.Properties.Where(
+                p => !ASTUtils.CheckIgnoreProperty(p) && !p.IsInRefTypeAndBackedByValueClassField()))
+                GenerateProperty(property);
+        }
+
+        private void GenerateProperty(Property property)
+        {
+            PushBlock(BlockKind.Property);
+
+            if (property.Field is null)
+            {
+                throw new NotImplementedException();
+            }
+
+            if (property.HasGetter)
+                GeneratePropertyAccessor(property.Field,  true);
+
+            if (property.HasSetter)
+                GeneratePropertyAccessor(property.Field,  false);
+
+            PopBlock(NewLineKind.BeforeNextBlock);
+        }
+
+        private void GeneratePropertyAccessor(Field field, bool isGetter)
+        {
+            PushBlock(BlockKind.Property);
+
+            string propertyType = field.Type.Visit(TypePrinter);
+            string verb = isGetter ? "get" : "set";
+            string name = CaseRenamePass.ConvertCaseString(field, RenameCasePattern.UpperCamelCase);
+            string methodId = verb + name;
+            if (isGetter)
+            {
+                WriteLine($"private native {propertyType} {methodId}Jni();");
+                WriteLine($"public {propertyType} {methodId}()");
+            }
+            else
+            {
+                WriteLine($"private native void {methodId}Jni({propertyType} {JavaHelpers.AccessorParameterName});");
+                WriteLine($"public void {methodId}({propertyType} {JavaHelpers.AccessorParameterName})");
+            }
+
+            WriteOpenBraceAndIndent();
+
+            if (isGetter)
+                WriteLine($"return {methodId}Jni();");
+            else
+                WriteLine($"{methodId}Jni({JavaHelpers.AccessorParameterName});");
+
+            UnindentAndWriteCloseBrace();
+            PopBlock(NewLineKind.BeforeNextBlock);
         }
         #endregion
 
